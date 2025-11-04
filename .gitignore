@@ -38,3 +38,4 @@ Thumbs.db
 
 # Test connection script (contains password prompts)
 test_connection.py
+STAGE2_PLAN.md
