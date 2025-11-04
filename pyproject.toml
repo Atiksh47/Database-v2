@@ -1,0 +1,10 @@
+[tool.basedpyright]
+# Type checker configuration for CS348 Project
+reportMissingModuleSource = false
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+
+[tool.basedpyright.reportMissingImports]
+# Suppress warnings for psycopg2 (it's a binary package)
+"psycopg2" = "none"
+"psycopg2.extensions" = "none"
