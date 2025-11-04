@@ -14,8 +14,8 @@ engine = create_engine(DATABASE_URL, echo=True)  # echo=True shows SQL queries i
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Import models (we'll create these next)
-# from models import *
+# Import models so they're registered with Base
+from models import Author, Book
 
 @app.route('/')
 def hello():

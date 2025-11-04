@@ -3,9 +3,8 @@ Database models for CS348 Project
 """
 from app import Base
 
-# Import all models here once created
-# from .student import Student
-# from .meeting import Meeting
+# Import all models
+from .author import Author
+from .book import Book
 
-# This makes Base available for model definitions
-__all__ = ['Base']
+__all__ = ['Base', 'Author', 'Book']

@@ -41,9 +41,7 @@ def create_tables():
     
     # Import all models here so they're registered with Base
     # This must happen before creating tables
-    # Example: from models import Student, Meeting, etc.
-    # Uncomment the line below once you have models:
-    # from models import *
+    from models import Author, Book
     
     # Create all tables using the Base from app.py
     Base.metadata.create_all(bind=engine)
