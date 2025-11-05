@@ -3,7 +3,7 @@ Book model - Main table for Requirement 1 (CRUD operations)
 """
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from app import Base
+from database import Base
 
 class Book(Base):
     __tablename__ = 'books'

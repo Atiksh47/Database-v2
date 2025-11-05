@@ -2,7 +2,7 @@
 Author model - Supporting table
 """
 from sqlalchemy import Column, Integer, String
-from app import Base
+from database import Base
 
 class Author(Base):
     __tablename__ = 'authors'

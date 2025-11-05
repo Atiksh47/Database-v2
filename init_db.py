@@ -5,8 +5,9 @@ Creates the database and all tables
 """
 import psycopg2  # type: ignore
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT  # type: ignore
+from sqlalchemy import create_engine
 from config import Config
-from app import Base, engine
+from database import Base
 
 def create_database():
     """Create the database if it doesn't exist"""
@@ -43,7 +44,11 @@ def create_tables():
     # This must happen before creating tables
     from models import Author, Book
     
-    # Create all tables using the Base from app.py
+    # Create engine for this database
+    DATABASE_URL = Config.get_database_url()
+    engine = create_engine(DATABASE_URL, echo=True)
+    
+    # Create all tables using the Base from database.py
     Base.metadata.create_all(bind=engine)
     print("✅ Tables created successfully!")
 
