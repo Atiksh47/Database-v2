@@ -154,6 +154,32 @@ def get_author(author_id):
     finally:
         session.close()
 
+@app.route('/api/authors', methods=['POST'])
+def create_author():
+    """Create a new author"""
+    session = SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data or not all(k in data for k in ['name', 'nationality']):
+            return jsonify({'error': 'Missing required fields: name, nationality'}), 400
+        
+        # Create new author
+        author = Author(
+            name=data['name'],
+            nationality=data['nationality']
+        )
+        session.add(author)
+        session.commit()
+        
+        return jsonify(author.to_dict()), 201
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
 # ==================== REPORT ENDPOINTS (Requirement 2) ====================
 
 @app.route('/api/authors/nationalities', methods=['GET'])
