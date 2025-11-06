@@ -1,5 +1,10 @@
 """
-Author model - Supporting table
+Author model - Supporting/Reference table
+
+Database Design:
+- authors is a REFERENCE table (used for dropdowns and relationships)
+- Referenced by books table via foreign key (books.author_id → authors.id)
+- Relationship: One author can have many books (One-to-Many)
 """
 from sqlalchemy import Column, Integer, String
 from database import Base
