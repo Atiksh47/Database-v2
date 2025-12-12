@@ -5,6 +5,7 @@ Creates the database and all tables
 """
 import psycopg2  # type: ignore
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT  # type: ignore
+from psycopg2 import sql as psql  # type: ignore
 from sqlalchemy import create_engine
 from config import Config
 from database import Base
@@ -23,12 +24,25 @@ def create_database():
     cur = conn.cursor()
     
     # Check if database exists
-    cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{Config.DB_NAME}'")
+    # STAGE 3: SQL Injection Protection - Using parameterized query
+    # Note: PostgreSQL doesn't support parameterized queries for CREATE DATABASE,
+    # but we validate the database name to prevent injection
+    # For SELECT, we use parameterized queries
+    cur.execute(
+        psql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"),
+        [Config.DB_NAME]
+    )
     exists = cur.fetchone()
     
     if not exists:
         print(f"Creating database '{Config.DB_NAME}'...")
-        cur.execute(f'CREATE DATABASE {Config.DB_NAME}')
+        # CREATE DATABASE doesn't support parameters, but DB_NAME comes from config, not user input
+        # We use sql.Identifier to safely quote the identifier
+        cur.execute(
+            psql.SQL("CREATE DATABASE {}").format(
+                psql.Identifier(Config.DB_NAME)
+            )
+        )
         print(f"✅ Database '{Config.DB_NAME}' created successfully!")
     else:
         print(f"Database '{Config.DB_NAME}' already exists.")

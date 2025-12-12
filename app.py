@@ -11,8 +11,22 @@ CORS(app)  # Enable CORS for React frontend if needed
 
 # SQLAlchemy setup
 DATABASE_URL = Config.get_database_url()
-engine = create_engine(DATABASE_URL, echo=True)  # echo=True shows SQL queries in console
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# STAGE 3: Transaction and Isolation Level Configuration
+# isolation_level='READ COMMITTED' - Default PostgreSQL isolation level
+# This prevents dirty reads while allowing non-repeatable reads and phantom reads
+# Suitable for multi-user scenarios where we want to balance consistency and concurrency
+engine = create_engine(
+    DATABASE_URL, 
+    echo=True,  # echo=True shows SQL queries in console
+    isolation_level='READ COMMITTED',  # STAGE 3: Explicit isolation level
+    # Note: Using default connection pooling (not NullPool) for better performance
+    # Each session still manages its own transaction
+)
+SessionLocal = sessionmaker(
+    autocommit=False,  # STAGE 3: Manual transaction control
+    autoflush=False,  # STAGE 3: Manual flush control
+    bind=engine
+)
 
 # Import models (Base is in database.py, avoiding circular imports)
 from models import Author, Book
@@ -29,7 +43,13 @@ def health():
 
 @app.route('/api/books', methods=['GET'])
 def get_books():
-    """Get all books"""
+    """
+    Get all books
+    
+    STAGE 3: SQL Injection Protection
+    - SQLAlchemy ORM uses parameterized queries automatically
+    - No user input in this endpoint, but demonstrates safe query pattern
+    """
     session = SessionLocal()
     try:
         books = session.query(Book).all()
@@ -39,9 +59,17 @@ def get_books():
 
 @app.route('/api/books/<int:book_id>', methods=['GET'])
 def get_book(book_id):
-    """Get a single book by ID"""
+    """
+    Get a single book by ID
+    
+    STAGE 3: SQL Injection Protection
+    - book_id is converted to int by Flask routing (<int:book_id>)
+    - SQLAlchemy filter uses parameterized query: WHERE id = %s
+    - Even if string passed, type conversion prevents injection
+    """
     session = SessionLocal()
     try:
+        # STAGE 3: SQL Injection Protection - Parameterized query
         book = session.query(Book).filter(Book.id == book_id).first()
         if book:
             return jsonify(book.to_dict())
@@ -51,7 +79,21 @@ def get_book(book_id):
 
 @app.route('/api/books', methods=['POST'])
 def create_book():
-    """Create a new book"""
+    """
+    Create a new book
+    
+    STAGE 3: SQL Injection Protection
+    - SQLAlchemy ORM automatically uses prepared statements (parameterized queries)
+    - All user input is passed as parameters, not concatenated into SQL strings
+    - Example: session.query(Author).filter(Author.id == data['author_id'])
+      generates: SELECT * FROM authors WHERE id = %s (with parameter binding)
+    
+    STAGE 3: Transaction Management
+    - Transaction starts implicitly when session is created
+    - session.commit() commits the transaction atomically
+    - session.rollback() rolls back on error (ACID compliance)
+    - Isolation level: READ COMMITTED (prevents dirty reads)
+    """
     session = SessionLocal()
     try:
         data = request.get_json()
@@ -60,22 +102,27 @@ def create_book():
         if not data or not all(k in data for k in ['title', 'year', 'author_id']):
             return jsonify({'error': 'Missing required fields: title, year, author_id'}), 400
         
-        # Validate author exists
+        # STAGE 3: SQL Injection Protection - Parameterized query via SQLAlchemy ORM
+        # This query uses prepared statements automatically:
+        # SELECT * FROM authors WHERE id = %s (parameter: data['author_id'])
         author = session.query(Author).filter(Author.id == data['author_id']).first()
         if not author:
             return jsonify({'error': 'Author not found'}), 400
         
-        # Create new book (SQLAlchemy uses prepared statements automatically)
+        # STAGE 3: SQL Injection Protection - Parameterized insert via ORM
+        # INSERT INTO books (title, year, author_id) VALUES (%s, %s, %s)
         book = Book(
             title=data['title'],
             year=data['year'],
             author_id=data['author_id']
         )
         session.add(book)
+        # STAGE 3: Transaction - Atomic commit
         session.commit()
         
         return jsonify(book.to_dict()), 201
     except Exception as e:
+        # STAGE 3: Transaction - Rollback on error (ACID)
         session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
@@ -83,9 +130,17 @@ def create_book():
 
 @app.route('/api/books/<int:book_id>', methods=['PUT'])
 def update_book(book_id):
-    """Update an existing book"""
+    """
+    Update an existing book
+    
+    STAGE 3: Transaction Management
+    - All updates happen within a single transaction
+    - If any validation fails, entire transaction is rolled back
+    - Isolation level: READ COMMITTED ensures we see committed data from other transactions
+    """
     session = SessionLocal()
     try:
+        # STAGE 3: SQL Injection Protection - Parameterized query
         book = session.query(Book).filter(Book.id == book_id).first()
         if not book:
             return jsonify({'error': 'Book not found'}), 404
@@ -98,15 +153,17 @@ def update_book(book_id):
         if 'year' in data:
             book.year = data['year']
         if 'author_id' in data:
-            # Validate author exists
+            # STAGE 3: SQL Injection Protection - Parameterized query
             author = session.query(Author).filter(Author.id == data['author_id']).first()
             if not author:
                 return jsonify({'error': 'Author not found'}), 400
             book.author_id = data['author_id']
         
+        # STAGE 3: Transaction - Atomic commit
         session.commit()
         return jsonify(book.to_dict())
     except Exception as e:
+        # STAGE 3: Transaction - Rollback on error
         session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
@@ -114,17 +171,30 @@ def update_book(book_id):
 
 @app.route('/api/books/<int:book_id>', methods=['DELETE'])
 def delete_book(book_id):
-    """Delete a book"""
+    """
+    Delete a book
+    
+    STAGE 3: SQL Injection Protection
+    - book_id validated as integer by Flask routing
+    - DELETE uses parameterized query: DELETE FROM books WHERE id = %s
+    
+    STAGE 3: Transaction Management
+    - Delete operation is atomic within transaction
+    - Rollback on error ensures data consistency
+    """
     session = SessionLocal()
     try:
+        # STAGE 3: SQL Injection Protection - Parameterized query
         book = session.query(Book).filter(Book.id == book_id).first()
         if not book:
             return jsonify({'error': 'Book not found'}), 404
         
         session.delete(book)
+        # STAGE 3: Transaction - Atomic commit
         session.commit()
         return jsonify({'message': 'Book deleted successfully'}), 200
     except Exception as e:
+        # STAGE 3: Transaction - Rollback on error
         session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
@@ -156,7 +226,18 @@ def get_author(author_id):
 
 @app.route('/api/authors', methods=['POST'])
 def create_author():
-    """Create a new author"""
+    """
+    Create a new author
+    
+    STAGE 3: SQL Injection Protection
+    - All user input (name, nationality) inserted via parameterized queries
+    - INSERT INTO authors (name, nationality) VALUES (%s, %s)
+    - SQLAlchemy ORM handles parameter binding automatically
+    
+    STAGE 3: Transaction Management
+    - Atomic insert within transaction
+    - Rollback on error maintains data integrity
+    """
     session = SessionLocal()
     try:
         data = request.get_json()
@@ -165,16 +246,18 @@ def create_author():
         if not data or not all(k in data for k in ['name', 'nationality']):
             return jsonify({'error': 'Missing required fields: name, nationality'}), 400
         
-        # Create new author
+        # STAGE 3: SQL Injection Protection - Parameterized insert
         author = Author(
             name=data['name'],
             nationality=data['nationality']
         )
         session.add(author)
+        # STAGE 3: Transaction - Atomic commit
         session.commit()
         
         return jsonify(author.to_dict()), 201
     except Exception as e:
+        # STAGE 3: Transaction - Rollback on error
         session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
@@ -203,6 +286,21 @@ def get_books_report():
     - end_year: Filter books published until this year (optional)
     - author_id: Filter by specific author (optional)
     - nationality: Filter by author nationality (optional)
+    
+    STAGE 3: SQL Injection Protection
+    - All filter values are passed as parameters via SQLAlchemy ORM
+    - Example: Book.year >= start_year generates: WHERE year >= %s (parameterized)
+    - No string concatenation or raw SQL with user input
+    
+    STAGE 3: Index Usage
+    - idx_books_year: Used when filtering by start_year or end_year
+    - idx_books_author_id: Used when filtering by author_id
+    - idx_books_author_year: Used when filtering by both author_id and year
+    - idx_authors_nationality: Used when filtering by nationality (in JOIN)
+    
+    STAGE 3: Transaction Management
+    - Read-only transaction with READ COMMITTED isolation
+    - Ensures we see committed data, prevents dirty reads
     """
     session = SessionLocal()
     try:
@@ -212,28 +310,41 @@ def get_books_report():
         author_id = request.args.get('author_id', type=int)
         nationality = request.args.get('nationality', type=str)
         
-        # Start with base query joining books and authors
+        # STAGE 3: SQL Injection Protection - All joins use ORM relationships
+        # This generates: SELECT * FROM books JOIN authors ON books.author_id = authors.id
+        # All comparisons use parameterized queries
         query = session.query(Book).join(Author, Book.author_id == Author.id)
         
         # Apply filters dynamically
+        # STAGE 3: SQL Injection Protection - All filters use parameterized queries
         filters = []
         
         if start_year is not None:
+            # Uses idx_books_year index
+            # Generated SQL: WHERE year >= %s (parameter: start_year)
             filters.append(Book.year >= start_year)
         
         if end_year is not None:
+            # Uses idx_books_year index
+            # Generated SQL: WHERE year <= %s (parameter: end_year)
             filters.append(Book.year <= end_year)
         
         if author_id is not None:
+            # Uses idx_books_author_id index
+            # Generated SQL: WHERE author_id = %s (parameter: author_id)
             filters.append(Book.author_id == author_id)
         
         if nationality:
+            # Uses idx_authors_nationality index
+            # Generated SQL: WHERE nationality = %s (parameter: nationality)
             filters.append(Author.nationality == nationality)
         
         # Apply all filters
         if filters:
+            # STAGE 3: SQL Injection Protection - and_() combines filters safely
             query = query.filter(and_(*filters))
         
+        # STAGE 3: Index Usage - PostgreSQL query planner will use appropriate indexes
         # Get filtered books
         books = query.all()
         
@@ -242,27 +353,34 @@ def get_books_report():
         
         if total_count > 0:
             # Average publication year
-            avg_year = sum(book.year for book in books) / total_count
+            # Note: book.year is an int at runtime (after .all() query)
+            # Type checker doesn't understand this, so we use type: ignore
+            year_sum = sum(book.year for book in books)  # type: ignore
+            avg_year = float(year_sum) / float(total_count)  # type: ignore
             
             # Calculate books per author statistics
             # Get all unique authors in the filtered results
-            author_ids = list(set(book.author_id for book in books))
+            author_ids = list(set(book.author_id for book in books))  # type: ignore
             
             # Count books per author
             books_per_author = {}
             for book in books:
-                if book.author_id not in books_per_author:
-                    books_per_author[book.author_id] = 0
-                books_per_author[book.author_id] += 1
+                author_id = book.author_id  # type: ignore
+                if author_id not in books_per_author:
+                    books_per_author[author_id] = 0
+                books_per_author[author_id] += 1
             
             # Average books per author
-            avg_books_per_author = sum(books_per_author.values()) / len(books_per_author) if books_per_author else 0
+            if books_per_author:
+                avg_books_per_author = float(sum(books_per_author.values())) / float(len(books_per_author))
+            else:
+                avg_books_per_author = 0.0
             
             # Total unique authors
             total_authors = len(books_per_author)
         else:
-            avg_year = 0
-            avg_books_per_author = 0
+            avg_year = 0.0
+            avg_books_per_author = 0.0
             total_authors = 0
         
         # Prepare response
